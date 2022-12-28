@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kgretzky/evilginx2/log"
@@ -278,13 +279,29 @@ func (d *CertDb) addPhishletCertificate(site_name string, base_domain string, ce
 }
 
 func (d *CertDb) loadPhishletCertificate(site_name string, base_domain string) error {
-	crt_dir := filepath.Join(d.dataDir, base_domain)
+	// example domain: first.second.third.root.tld
+	// new combination array to search for certificates:
+	// first.second.third.root.tld, second.third.root.tld, third.root.tld, root.tld
+	root_domain := d.cfg.GetBaseDomain()
+	domain_substrings := strings.Split(base_domain, ".")
+	root_domain_substrings := strings.Split(root_domain, ".")
+	new_domain_size := len(domain_substrings) - len(root_domain_substrings) + 1
 
-	cert, err := tls.LoadX509KeyPair(filepath.Join(crt_dir, site_name+".crt"), filepath.Join(crt_dir, site_name+".key"))
-	if err != nil {
-		return err
+	for i := range domain_substrings[:new_domain_size] {
+		domain := strings.Join(domain_substrings[i:], ".")
+
+		crt_dir := filepath.Join(d.dataDir, domain)
+
+		cert, err := tls.LoadX509KeyPair(filepath.Join(crt_dir, site_name+".crt"), filepath.Join(crt_dir, site_name+".key"))
+
+		if err != nil {
+			if i < new_domain_size-1 {
+				continue
+			}
+			return err
+		}
+		d.addPhishletCertificate(site_name, base_domain, &cert)
 	}
-	d.addPhishletCertificate(site_name, base_domain, &cert)
 	return nil
 }
 
